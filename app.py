@@ -3,6 +3,7 @@ hexafarms · Yield Forecast Demo
 ================================
 Run:  streamlit run app.py
 """
+import io
 from datetime import datetime, time
 
 import numpy as np
@@ -57,6 +58,24 @@ PLOTLY_LAYOUT = dict(
     legend=dict(orientation="h", y=1.08, x=0, font_size=11),
     hovermode="x unified",
 )
+
+
+def make_excel(fwd_rows, totals, actuals):
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        pd.DataFrame(fwd_rows).to_excel(writer, sheet_name="Forward plan", index=False)
+
+        season = df_fc[["week", "week_date", "block_id", model_col]].copy()
+        season = season.rename(columns={model_col: "forecast_t"})
+        season.to_excel(writer, sheet_name="Season forecast", index=False)
+
+        log = pd.DataFrame([
+            {"week": w, "week_date": week_to_date(w), "model_t": v["model"], "actual_t": v["actual"]}
+            for w, v in actuals.items()
+        ])
+        log.to_excel(writer, sheet_name="Harvest log", index=False)
+
+    return buf.getvalue()
 
 
 @st.cache_data(show_spinner="Generating training data…")
@@ -310,6 +329,12 @@ if fwd_rows:
                   ("color: #e24b4a" if str(v).startswith("-") else ""))),
         ),
         use_container_width=True,
+    )
+    st.download_button(
+        label="Download forecast (.xlsx)",
+        data=make_excel(fwd_rows, df_fc, DEMO_ACTUALS),
+        file_name=f"hexafarms_forecast_W{CURRENT_WEEK}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
 st.markdown("---")
